@@ -1,0 +1,56 @@
+---
+title: "ESM204_HW3"
+author: "Nickolas McManus"
+date: "4/15/2022"
+output: 
+  html_document: 
+    toc: yes
+    toc_float: yes
+    theme: cerulean
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(here)
+library(tidyverse)
+library(equatiomatic)
+library(broom)
+```
+
+```{r}
+# read in data
+scc <-read_csv(here("HW3_data.csv"))
+```
+<br>
+
+### Q1:
+
+One kWh of electricity emits 0.85 pounds of CO2. Assuming that the interim SCC correctly reflects the total social cost of one metric ton of CO2, what is the marginal externality cost per kwH of electricity?
+
+```{r}
+# Linear regression model
+low_lm <- lm(Q_Low_Kwh ~ 0 + Price_Cents, data = scc)
+summary(low_lm)
+low_tidy <- tidy(low_lm)
+low_tidy
+```
+
+
+```{r}
+ggplot(data = scc) +
+  # graph the low income demand
+  geom_point(aes(x = Q_Low_Kwh, y = Price_Cents), color = "slateblue", alpha = 0.5, size = 2) +
+  
+  # graph the high income demand
+  geom_point(aes(x = Q_High_Kwh, y = Price_Cents), color = "sienna", alpha = 0.5, size = 2) +
+  
+  labs(x = "\nQuantity (kWh)",
+       y = "Price ($/kWh)\n") +
+  
+  theme_classic() +
+  
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")) 
+```
+
