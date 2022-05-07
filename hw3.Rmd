@@ -13,14 +13,118 @@ output:
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 library(here)
 library(tidyverse)
+library(janitor)
 library(equatiomatic)
 library(broom)
+library(rootSolve)
 ```
 
 ```{r}
 # read in data
-scc <-read_csv(here("HW3_data.csv"))
+e_data <-read_csv(here("HW3_data.csv")) %>% 
+  
+  #make names better and get rid of worthless first column
+  clean_names() %>% 
+  select(-1)
 ```
+
+
+```{r}
+# Linear regression models
+
+model_demand_l <- lm(price_cents ~ q_low_kwh, data = e_data)
+model_demand_h <- lm(price_cents ~ q_high_kwh, data = e_data)
+
+low_tidy <- tidy(model_demand_l)
+low_tidy
+
+high_tidy <- tidy(model_demand_h)
+high_tidy
+```
+
+need to rearrange the parameter to get Q(P)! 
+
+Qgg = Qlow(P) + Qlow(h) 
+
+Importantly, since they-intercepts are different, we know that Qagg(P) will have a kink. I include an ifelse() statement to take care of the kink.
+
+define a function to get demand
+
+```{r}
+# Importantly, since they-intercepts are different, we know that Qagg(P) will have a kink. I include an ifelse() statement to take care of the kink.
+
+# define a function to get demand
+demand <- function(p, model){
+  q <- (p - model$coefficients[[1]])/model$coefficients[[2]]
+  q <- ifelse(q<0,0,q)
+  return(q)
+}
+
+demand_agg <- function(p){
+  q <- demand(p, model_demand_l) + demand(p, model_demand_h)
+  return(q)
+}
+
+# trying to replicate for low-income demand
+demand_low <- function(p){
+  q <- demand(p, model_demand_l)
+  return(q)
+}
+
+# trying to replicate for high-income demand
+demand_high <- function(p){
+  q <- demand(p, model_demand_h)
+  return(q)
+}
+```
+
+```{r}
+# Sandy's code for Qagg
+price = seq(0, 30, length.out = 100)
+Qagg <- map(price, demand_agg) %>% unlist()
+
+df<- tibble(Qagg = Qagg, price = price)
+
+# trying to do the same for Qlow
+Qlow <- map(price, demand_low) %>% unlist()
+Qlow_df <- tibble(Qlow = Qlow, price = price)
+
+# trying to do same for Qhigh
+Qhigh <- map(price, demand_high) %>% unlist()
+Qhigh_df <- tibble(Qhigh = Qhigh, price = price)
+
+
+ggplot() +
+  # graph the agg demand
+  geom_line(data = df, aes(Qagg, price)) +
+  
+  # graph low demand??
+  geom_line(data = Qlow_df, aes(Qlow, price)) +
+  
+  # graph high demand??
+  geom_line(data = Qhigh_df, aes(Qhigh, price)) +
+  
+  # graph the low income points
+  geom_point(data = e_data, aes(x = q_low_kwh, y = price_cents), color = "slateblue", alpha = 0.5, size = 2) +
+  # graph the high income points
+  geom_point(data = e_data, aes(x = q_high_kwh, y = price_cents), color = "sienna", alpha = 0.5, size = 2) +
+
+    labs(x = "\nQuantity (kWh)",
+       y = "Price ($/kWh)\n") +
+  
+  theme_classic() +
+  
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")) +
+  
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0))
+  
+
+```
+
+
 <br>
 
 ### Q1:
@@ -28,23 +132,38 @@ scc <-read_csv(here("HW3_data.csv"))
 One kWh of electricity emits 0.85 pounds of CO2. Assuming that the interim SCC correctly reflects the total social cost of one metric ton of CO2, what is the marginal externality cost per kwH of electricity?
 
 ```{r}
-# Linear regression model
-low_lm <- lm(Q_Low_Kwh ~ 0 + Price_Cents, data = scc)
-summary(low_lm)
-low_tidy <- tidy(low_lm)
-low_tidy
+# we know electricty price is $0.10 per kWh and price-intercept is 0, so we can set equation for MPC
+mpc <- 0.1q
+
+
+# interim SCC is $51 per metric ton CO2
+scc_int <- 51
+
+# convert from tons to lbs 
+scc_int_lbs <- scc_int / 2204.62
+
+
+
 ```
 
 
+
+
+
+
+
+demand <- function(p, model)
+
+
 ```{r}
-ggplot(data = scc) +
+ggplot(data = e_data) +
   # graph the low income demand
-  geom_point(aes(x = Q_Low_Kwh, y = Price_Cents), color = "slateblue", alpha = 0.5, size = 2) +
+  geom_point(aes(x = q_low_kwh, y = price_cents), color = "slateblue", alpha = 0.5, size = 2) +
   
   # graph the high income demand
-  geom_point(aes(x = Q_High_Kwh, y = Price_Cents), color = "sienna", alpha = 0.5, size = 2) +
-  
-  labs(x = "\nQuantity (kWh)",
+  geom_point(aes(x = q_high_kwh, y = price_cents), color = "sienna", alpha = 0.5, size = 2) +
+
+    labs(x = "\nQuantity (kWh)",
        y = "Price ($/kWh)\n") +
   
   theme_classic() +
@@ -52,5 +171,12 @@ ggplot(data = scc) +
   theme(
     axis.title.x = element_text(face = "bold"),
     axis.title.y = element_text(face = "bold")) 
+```
+
+
+```{r}
+ggplot(data = scc) +
+  geom_point(aes(x = q_low_kwh, y = price_cents), color = "slateblue", alpha = 0.5, size = 2) +
+  geom_smooth(method = 'lm')
 ```
 
