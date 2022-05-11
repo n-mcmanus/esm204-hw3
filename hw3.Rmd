@@ -60,6 +60,7 @@ demand <- function(p, model){
   return(q)
 }
 
+# for each p level, return aggregate demand
 demand_agg <- function(p){
   q <- demand(p, model_demand_l) + demand(p, model_demand_h)
   return(q)
@@ -94,7 +95,7 @@ Qlow_df <- tibble(Qlow = Qlow, price = price)
 Qhigh <- map(price, demand_high) %>% unlist()
 Qhigh_df <- tibble(Qhigh = Qhigh, price = price)
 
-Qhigher <- map(price, demand_higher) %>% unlist()
+Qhigher <- map(price, demand_high) %>% unlist()
 Qhigher_df <- tibble (Qhigher = Qhigher, price = price)
 
 
@@ -150,10 +151,189 @@ mec <- scc_int_lbs * 0.85
 Answer: The marginal externality cost is $`r round(mec, 4)` per kWh of electricity.
 
 
+### Q2: 
+What is the aggregate monthly demand curve for electricity? What is the supply curve for electricity? What is the “benefit” to consumers under the status quo? What is the “benefit” to producers under the status quo? What is the environmental cost under the status quo?
+
+
+```{r}
+# Linear regression models
+
+model_demand_l <- lm(price_cents ~ q_low_kwh, data = e_data)
+model_demand_h <- lm(price_cents ~ q_high_kwh, data = e_data)
+
+low_tidy <- tidy(model_demand_l)
+low_tidy
+
+high_tidy <- tidy(model_demand_h)
+high_tidy
+```
+
+need to rearrange the parameter to get Q(P)! 
+
+Qgg = Qlow(P) + Qlow(h) 
+
+Importantly, since they-intercepts are different, we know that Qagg(P) will have a kink. I include an ifelse() statement to take care of the kink.
+
+define a function to get demand
+
+```{r}
+# need to rearrange the parameter to get Q(P)! 
+
+# Qgg = Qlow(P) + Qlow(h) 
+
+# Importantly, since they-intercepts are different, we know that Qagg(P) will have a kink. I include an ifelse() statement to take care of the kink.
+
+# define a function to get demand
+
+demand <- function(p, model){
+  q <- (p - model$coefficients[[1]])/model$coefficients[[2]]
+  q <- ifelse(q<0,0,q)
+  return(q)
+}
+
+# for each p level, return aggregate demand
+demand_agg <- function(p){
+  q <- demand(p, model_demand_l) + demand(p, model_demand_h)
+  return(q)
+}
+
+# trying to replicate for low-income demand
+demand_low <- function(p){
+  q <- demand(p, model_demand_l)
+  return(q)
+}
+
+# trying to replicate for high-income demand
+demand_high <- function(p){
+  q <- demand(p, model_demand_h)
+  return(q)
+}
+
+# current market price is $0.10 per kWh
+market_q <- demand_agg(10)
+```
+
+```{r}
+# Sandy's code for Qagg
+price = seq(0, 31.6, length.out = 100)
+Qagg <- map(price, demand_agg) %>% unlist()
+
+df<- tibble(Qagg = Qagg, price = price)
+
+# trying to do the same for Qlow
+Qlow <- map(price, demand_low) %>% unlist()
+Qlow_df <- tibble(Qlow = Qlow, price = price)
+
+# trying to do same for Qhigh
+Qhigh <- map(price, demand_high) %>% unlist()
+Qhigh_df <- tibble(Qhigh = Qhigh, price = price)
+
+```
+
+
+```{r}
+# plot the whole thing!
+ggplot() +
+  # graph the agg demand
+  geom_line(data = df, aes(Qagg, price), color = "black", size = 1.1) +
+  # graph low demand
+  geom_line(data = Qlow_df, aes(Qlow, price), color = "slateblue", size = 1, linetype = "twodash") +
+  # graph high demand
+  geom_line(data = Qhigh_df, aes(Qhigh, price), color = "sienna", size = 1, linetype = "dashed") +
+  # graph current MPC
+  geom_abline(slope = (10/market_q), intercept = 0, color = "purple", size = 1)+
+  
+  # graph the low income points
+  geom_point(data = e_data, aes(x = q_low_kwh, y = price_cents), color = "slateblue", alpha = 0.5, size = 2) +
+  # graph the high income points
+  geom_point(data = e_data, aes(x = q_high_kwh, y = price_cents), color = "sienna", alpha = 0.5, size = 2) +
+
+  labs(x = "\nQuantity (kWh)",
+       y = "Price (cents)\n") +
+  
+  theme_classic() +
+  
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")) +
+  # force origin at 0,0
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0))
+
+```
+
+The marginal private cost (supply) curve for electricity is: 
+$MPC= 0.1Q $
+
+```{r}
+# I also define functions for calculating the consumer surplus:
+
+CS <- function(p, model){
+  q <- demand(p, model)
+  cs <- 0.5*(model$coefficients[[1]] - p)*q
+  return(cs)
+}
+
+CS_agg <- function(p){
+  cs <- CS(p,model_demand_l) + CS(p,model_demand_h)
+  return(cs)
+}
+```
+
+
+```{r}
+# calculating surpluses at market equilibrium
+# CS calculation needs Y intercept of high demand/demand agg curve --> at 0 kWh, price would be $0.316
+high_sum <-summary.lm(model_demand_h)
+high_y_int <- high_sum$coefficients[1, 1] 
+low_sum <- summary.lm(model_demand_l)
+low_y_int <- low_sum$coefficients[1, 1]
+# Converted back to dollars
+cs_sq_high <- 0.5*market_q*((high_y_int/100) - 0.10)
+# High consumer benefit $57,984.10
+cs_sq_low <- 0.5*market_q*((low_y_int/100) - 0.10)
+# Low consumer benefit $35,882.29
+cs_sq_total <- cs_sq_high + cs_sq_low
+# Consumer benefit $93,866.39
+ps_sq <- 0.5*market_q*0.10
+# Producer benefit $26,835.97
+env_cost_sq <- (MEC*market_q)/100
+# Environmental cost $10,553.65
+```
+
+The benefit, or surplus, to consumers 
 
 
 
-demand <- function(p, model)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ```{r}
@@ -173,11 +353,3 @@ ggplot(data = e_data) +
     axis.title.x = element_text(face = "bold"),
     axis.title.y = element_text(face = "bold")) 
 ```
-
-
-```{r}
-ggplot(data = scc) +
-  geom_point(aes(x = q_low_kwh, y = price_cents), color = "slateblue", alpha = 0.5, size = 2) +
-  geom_smooth(method = 'lm')
-```
-
